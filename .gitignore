@@ -102,3 +102,6 @@ dist
 
 # TernJS port file
 .tern-port
+
+# Google Cloud API key
+sneeze-bot-339300-1818e8d53690.json
