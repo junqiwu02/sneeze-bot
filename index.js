@@ -1,7 +1,8 @@
 require('dotenv').config();
 const { Client, Intents } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection, createAudioPlayer, createAudioResource, StreamType, EndBehaviorType } = require('@discordjs/voice');
-const { OpusEncoder } = require('@discordjs/opus');
+const fs = require('fs');
+const prism = require('prism-media');
 
 const speech = require('@google-cloud/speech');
 
@@ -16,8 +17,6 @@ const client = new Client({
         Intents.FLAGS.GUILD_VOICE_STATES,
     ]
 });
-
-const encoder = new OpusEncoder(48000, 2);
 
 const speechClient = new speech.SpeechClient();
 
@@ -44,7 +43,9 @@ const recognizeStream = speechClient
         )
 );
 
-let stream;
+// let stream;
+
+const listening = {};
 
 // When the client is ready, run this code (only once)
 client.once('ready', () => {
@@ -64,19 +65,42 @@ client.on('interactionCreate', async interaction => {
             if (!channel) {
                 interaction.reply('You are not in a voice channel!');
             } else {
-                const connection = await joinVoiceChannel({
+                const connection = joinVoiceChannel({
                     channelId: channel.id,
                     guildId: channel.guild.id,
                     adapterCreator: channel.guild.voiceAdapterCreator,
                     selfDeaf: false,
                 });
 
-                // stream closes when connection is destroyed
-                stream = connection.receiver.subscribe(interaction.member.id, {
-                    behavior: EndBehaviorType.Manual,
+                console.log(listening);
+
+                connection.receiver.speaking.on('start', userId => {
+                    if (userId in listening && listening[userId].readable) {
+                        return;
+                    }
+
+                    const stream = connection.receiver.subscribe(userId, {
+                        behavior: EndBehaviorType.Manual,
+                    });
+
+                    const ws = fs.createWriteStream('raw-voice-data');
+                    const raw = stream.pipe(new prism.opus.Decoder({ channels: 1, rate: 16000 }));
+                    listening[userId] = stream;
+                    raw.pipe(recognizeStream);
+                    // stream.on('data', data => {
+                    //     ws.write(encoder.decode(data));
+                    // });
+                    // stream.on('close', () => {
+                    //     ws.close();
+                    // });
                 });
 
-                stream.pipe(recognizeStream);
+                // // stream closes when connection is destroyed
+                // stream = connection.receiver.subscribe(interaction.member.id, {
+                //     behavior: EndBehaviorType.Manual,
+                // });
+
+                // stream.pipe(recognizeStream);
 
                 await interaction.reply('Joined your voice channel!');
             }
